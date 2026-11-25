@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ShellLayout } from '@/app/ShellLayout';
 import { RouterProvider } from '@/core/router/router';
@@ -81,5 +81,11 @@ describe('UI Components Presentation Layer', () => {
     expect(screen.getByRole('button', { name: /New Channel/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Search workspace')).toBeInTheDocument();
     expect(screen.getByText('Team Presence')).toBeInTheDocument();
+
+    // Verify Dark Mode toggle updates data-theme attribute on documentElement
+    const themeBtns = screen.getAllByRole('button', { name: 'Toggle theme' });
+    expect(themeBtns.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(themeBtns[0]!);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 });

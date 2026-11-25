@@ -159,6 +159,17 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
           <div className="topbar__right">
             <button
               type="button"
+              className="btn btn--secondary btn--sm"
+              aria-label="Toggle theme"
+              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              onClick={() => void settingsService.toggleTheme(theme === 'dark' ? 'light' : 'dark')}
+            >
+              {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+              <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            </button>
+
+            <button
+              type="button"
               className={`bolt-pill ${isConnected ? 'bolt-pill--online' : ''}`}
               title="Real-Time & Delta Sync"
               aria-label="Trigger sync"

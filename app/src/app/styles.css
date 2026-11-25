@@ -1,4 +1,5 @@
 :root,
+:root[data-theme='light'],
 [data-theme='light'] {
   --bg-app: #f3f7fa;
   --bg-surface: #ffffff;
@@ -23,6 +24,7 @@
   --shadow: 0 10px 28px rgba(15, 35, 52, 0.08);
 }
 
+:root[data-theme='dark'],
 [data-theme='dark'] {
   --bg-app: #0b121c;
   --bg-surface: #111b29;
@@ -30,7 +32,7 @@
   --bg-subtle: #1f2e43;
   --bg-rail: #07262b;
   --bg-rail-hover: rgba(255, 255, 255, 0.12);
-  --bg-bubble-own: rgba(20, 184, 196, 0.16);
+  --bg-bubble-own: rgba(20, 184, 196, 0.18);
   --bg-bubble-other: #182536;
   --border-color: #223247;
   --text-primary: #eef4fa;

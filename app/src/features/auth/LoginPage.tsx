@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { Zap } from 'lucide-react';
+import { Moon, Sun, Zap } from 'lucide-react';
 import { useRouter } from '@/core/router/router';
+import { settingsService } from '@/features/settings/settingsService';
+import { useStoreSelector } from '@/shared/hooks';
 import { Button, Card, Input, useToast } from '@/shared/ui';
 import { authService } from './authService';
 
 export const LoginPage: React.FC = () => {
   const { navigate } = useRouter();
   const { pushToast } = useToast();
+  const theme = useStoreSelector((s) => s.theme);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,16 +49,28 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="auth-page">
       <Card className="auth-card">
-        <div className="auth-brand">
-          <div className="auth-brand__logo">
-            <Zap size={20} />
+        <div className="auth-brand" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="auth-brand__logo">
+              <Zap size={20} />
+            </div>
+            <div>
+              <h2 style={{ margin: 0 }}>PulseRT</h2>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>
+                Local-First Real-Time Collaboration
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 style={{ margin: 0 }}>PulseRT</h2>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--text-secondary)' }}>
-              Local-First Real-Time Collaboration
-            </p>
-          </div>
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            aria-label="Toggle theme"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            onClick={() => void settingsService.toggleTheme(theme === 'dark' ? 'light' : 'dark')}
+          >
+            {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          </button>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
