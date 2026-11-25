@@ -865,6 +865,85 @@ a:hover {
   font-size: 10.5px;
   color: var(--text-muted);
 }
+.msg-reply-quote {
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(15, 163, 177, 0.08);
+  font-size: 12px;
+  cursor: pointer;
+}
+.msg-reply-quote__sender {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+.msg-reply-quote__text {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.reply-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+.search-filter-bar {
+  padding: 8px 20px;
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.mention-popover {
+  position: absolute;
+  left: 16px;
+  bottom: 115%;
+  min-width: 220px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 30;
+}
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.mention-option:hover {
+  background: var(--bg-elevated);
+}
 .msg-reactions {
   display: flex;
   flex-wrap: wrap;

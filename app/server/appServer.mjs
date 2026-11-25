@@ -316,6 +316,22 @@ export function createAppServer({
           }
         }
 
+        if (pathname.startsWith('/api/messages/') && req.method === 'DELETE') {
+          const messageId = decodeURIComponent(pathname.slice('/api/messages/'.length));
+          const result = store.deleteMessage(messageId, claims.sub);
+          if (result.status === 'not_found') return sendError(res, 404, 'message not found');
+          if (result.status === 'forbidden') return sendError(res, 403, 'cannot delete another user message');
+          const delPayload = {
+            kind: 'delete_message',
+            message_id: result.message.message_id,
+            client_msg_id: result.message.client_msg_id,
+            topic: result.message.topic,
+          };
+          bridge?.broadcastTopicEvent(result.message.topic, claims.sub, delPayload);
+          bridge?.pushControlToUser(claims.sub, 'DELETE_MESSAGE', delPayload);
+          return sendJson(res, 200, { ok: true, ...delPayload });
+        }
+
         if (pathname === '/api/media/upload' && req.method === 'POST') {
           const rawBody = await readBody(req, 10 * 1024 * 1024);
           const file = parseMultipartFile(rawBody, req.headers['content-type']);

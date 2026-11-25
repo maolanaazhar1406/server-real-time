@@ -416,11 +416,41 @@ export class LocalStore {
         kind: item.kind,
         text: item.text,
         attachment: item.attachment,
+        reply_to: item.reply_to,
         timestamp: item.created_at,
         status: 'pending',
         read_by: { [sender.id]: item.created_at },
       },
     ]);
+  }
+
+  deleteMessage(messageOrClientId: string, topicHint?: string): void {
+    const nextMap = { ...this.state.messagesByTopic };
+    let changed = false;
+    const topics = topicHint ? [topicHint] : Object.keys(nextMap);
+
+    for (const topic of topics) {
+      const list = nextMap[topic];
+      if (!list || list.length === 0) continue;
+      const toRemove = list.filter(
+        (m) => m.message_id === messageOrClientId || m.client_msg_id === messageOrClientId,
+      );
+      if (toRemove.length > 0) {
+        nextMap[topic] = list.filter(
+          (m) => m.message_id !== messageOrClientId && m.client_msg_id !== messageOrClientId,
+        );
+        changed = true;
+        for (const rem of toRemove) {
+          this.seenMessageIds.delete(rem.message_id);
+          void localDB.delete('messages', rem.message_id);
+        }
+      }
+    }
+
+    if (changed) {
+      this.emit({ messagesByTopic: nextMap });
+    }
+    this.removeOutboxItem(messageOrClientId);
   }
 
   updateOutboxItem(clientMsgId: string, patch: Partial<OutboxItem>): void {
@@ -544,6 +574,12 @@ export class LocalStore {
         const u = ev.data as User;
         if (u && u.id === this.state.session?.user.id) {
           this.updateUser(u);
+        }
+      } else if (ev.kind === 'delete_message') {
+        const del = ev.data as { message_id?: string; client_msg_id?: string; topic?: string };
+        const id = del.message_id || del.client_msg_id;
+        if (id) {
+          this.deleteMessage(id, del.topic || ev.topic);
         }
       }
     }

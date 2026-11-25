@@ -145,6 +145,7 @@ class SyncEngine {
             text: item.text,
             client_msg_id: item.client_msg_id,
             attachment: item.attachment,
+            reply_to: item.reply_to,
           },
           {
             qos: 1,
@@ -197,6 +198,10 @@ class SyncEngine {
         }
       } else if (ctrl.action === 'NOTIFICATIONS_READ_ALL') {
         localStore.markAllNotificationsRead();
+      } else if (ctrl.action === 'DELETE_MESSAGE' && ctrl.data) {
+        const del = ctrl.data as { message_id?: string; client_msg_id?: string; topic?: string };
+        const id = del.message_id || del.client_msg_id;
+        if (id) localStore.deleteMessage(id, del.topic);
       }
       return;
     }
@@ -212,6 +217,7 @@ class SyncEngine {
         message_id?: string;
         sender_name?: string;
         attachment?: ChatMessage['attachment'];
+        reply_to?: ChatMessage['reply_to'];
         is_typing?: boolean;
         user_id?: string;
         read_at?: number;
@@ -240,6 +246,11 @@ class SyncEngine {
         return;
       }
 
+      if (payload.kind === 'delete_message' && (payload.message_id || payload.client_msg_id)) {
+        localStore.deleteMessage(payload.message_id || payload.client_msg_id!, topic);
+        return;
+      }
+
       const msgId = payload.message_id || env.message_id || `${Date.now()}-${Math.random()}`;
       const senderName =
         payload.sender_name ||
@@ -258,6 +269,7 @@ class SyncEngine {
           kind: payload.attachment ? 'file' : 'chat',
           text: payload.text || '',
           attachment: payload.attachment,
+          reply_to: payload.reply_to,
           timestamp: env.timestamp || Date.now(),
           status: 'delivered',
         },

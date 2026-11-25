@@ -150,7 +150,12 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
               className="topbar__search-input"
               value={searchQuery}
               onChange={(e) => onSearchChange?.(e.target.value)}
-              placeholder="Search channels, messages, or people..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery.trim() && !path.startsWith('/chat/')) {
+                  navigate(`/chat/${encodeURIComponent(activeTopic)}`);
+                }
+              }}
+              placeholder="Search by @username or keyword..."
               aria-label="Search workspace"
             />
             <Search size={15} className="topbar__search-icon" />

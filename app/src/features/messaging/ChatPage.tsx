@@ -12,16 +12,27 @@ import {
   Paperclip,
   Plus,
   RefreshCw,
+  Reply,
+  Search,
   Send,
   ShieldCheck,
   Smile,
+  Trash2,
   Users,
   Wifi,
+  X,
 } from 'lucide-react';
 import { APP_CONFIG } from '@/core/config/env';
 import { useRouter } from '@/core/router/router';
 import { syncEngine } from '@/core/sync/syncEngine';
-import { Attachment, ChatMessage, PresenceStatus, TypingState } from '@/core/types';
+import {
+  Attachment,
+  ChatMessage,
+  DirectoryUser,
+  PresenceStatus,
+  ReplyReference,
+  TypingState,
+} from '@/core/types';
 import { StatusSelector } from '@/features/presence/PresencePanel';
 import { useNetworkStatus, useStoreSelector } from '@/shared/hooks';
 import { Avatar, Badge, Button, Skeleton, StatusDot, useToast } from '@/shared/ui';
@@ -49,10 +60,41 @@ function renderStatusIcon(status: ChatMessage['status']) {
   }
 }
 
-export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
-  topic,
-  searchQuery = '',
-}) => {
+export function matchesMessageSearch(
+  msg: ChatMessage,
+  query: string,
+  usersById: Record<string, DirectoryUser>,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const senderUser = usersById[msg.sender_id];
+  const senderUsername = (senderUser?.username || msg.sender_id).toLowerCase();
+  const senderDisplay = (senderUser?.display_name || msg.sender_name || msg.sender_id).toLowerCase();
+
+  if (q.startsWith('@')) {
+    const target = q.slice(1).trim();
+    if (!target) return true;
+    return (
+      senderUsername.includes(target) ||
+      msg.sender_id.toLowerCase().includes(target) ||
+      msg.text.toLowerCase().includes(`@${target}`)
+    );
+  }
+
+  return (
+    msg.text.toLowerCase().includes(q) ||
+    senderUsername.includes(q) ||
+    senderDisplay.includes(q) ||
+    (msg.attachment?.filename.toLowerCase().includes(q) ?? false)
+  );
+}
+
+export const ChatPage: React.FC<{
+  topic: string;
+  searchQuery?: string;
+  onSearchChange?: (q: string) => void;
+}> = ({ topic, searchQuery = '', onSearchChange }) => {
   const { navigate } = useRouter();
   const { pushToast } = useToast();
   const { isConnected, socketState } = useNetworkStatus();
@@ -74,6 +116,7 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<Attachment | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ReplyReference | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [emojiMenuFor, setEmojiMenuFor] = useState<string | null>(null);
@@ -82,6 +125,7 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
   const [channelTab, setChannelTab] = useState<'all' | 'active' | 'queued'>('all');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<number | null>(null);
 
@@ -93,10 +137,10 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
   }, [topic]);
 
   useEffect(() => {
-    if (typeof bottomRef.current?.scrollIntoView === 'function') {
+    if (!searchQuery.trim() && typeof bottomRef.current?.scrollIntoView === 'function') {
       bottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages.length, topic]);
+  }, [messages.length, topic, searchQuery]);
 
   const filteredRooms = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -110,10 +154,15 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
         r.name.toLowerCase().includes(q) ||
         r.topic.toLowerCase().includes(q) ||
         r.description.toLowerCase().includes(q) ||
-        roomMsgs.some((m) => m.text.toLowerCase().includes(q))
+        roomMsgs.some((m) => matchesMessageSearch(m, q, usersById))
       );
     });
-  }, [rooms, messagesByTopic, outbox, channelTab, searchQuery]);
+  }, [rooms, messagesByTopic, outbox, channelTab, searchQuery, usersById]);
+
+  const visibleMessages = useMemo(() => {
+    if (!searchQuery.trim()) return messages;
+    return messages.filter((m) => matchesMessageSearch(m, searchQuery, usersById));
+  }, [messages, searchQuery, usersById]);
 
   const directoryUsers = useMemo(() => {
     const all = Object.values(usersById);
@@ -124,6 +173,18 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
       return rank(sa) - rank(sb) || a.display_name.localeCompare(b.display_name);
     });
   }, [usersById, presenceMap]);
+
+  const mentionMatch = useMemo(() => {
+    const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(text);
+    if (!match) return null;
+    const query = (match[1] ?? '').toLowerCase();
+    const candidates = directoryUsers.filter(
+      (u) =>
+        u.username.toLowerCase().includes(query) ||
+        u.display_name.toLowerCase().includes(query),
+    );
+    return candidates.length > 0 ? { query, candidates } : null;
+  }, [text, directoryUsers]);
 
   const sharedMedia = useMemo(
     () =>
@@ -188,11 +249,43 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
     if (!text.trim() && !pendingAttachment) return;
     const msgText = text;
     const att = pendingAttachment ?? undefined;
+    const replyRef = replyingTo ?? undefined;
     setText('');
     setPendingAttachment(null);
+    setReplyingTo(null);
     setComposerEmojiOpen(false);
     messagingService.sendTyping(topic, false);
-    await messagingService.sendMessage(topic, msgText, att);
+    await messagingService.sendMessage(topic, msgText, att, replyRef);
+  };
+
+  const handleStartReply = (m: ChatMessage) => {
+    setReplyingTo({
+      message_id: m.message_id,
+      sender_id: m.sender_id,
+      sender_name: m.sender_name || usersById[m.sender_id]?.display_name || m.sender_id,
+      text: m.text || m.attachment?.filename || 'Attachment',
+    });
+    composerInputRef.current?.focus();
+  };
+
+  const handleDeleteMessage = async (m: ChatMessage) => {
+    await messagingService.deleteMessage(topic, m.message_id, m.client_msg_id);
+    if (replyingTo?.message_id === m.message_id) {
+      setReplyingTo(null);
+    }
+    pushToast({ title: 'Message deleted', variant: 'info' });
+  };
+
+  const handleSelectMention = (username: string) => {
+    setText((prev) => prev.replace(/@([a-zA-Z0-9_-]*)$/, `@${username} `));
+    composerInputRef.current?.focus();
+  };
+
+  const scrollToMessage = (messageId: string) => {
+    const el = document.getElementById(`msg-${messageId}`);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   };
 
   const activeUsersCount = directoryUsers.filter(
@@ -330,8 +423,22 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
           </div>
         </div>
 
+        {searchQuery.trim() && (
+          <div className="search-filter-bar" role="status">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Search size={13} />
+              Filtering by <strong>{searchQuery.trim()}</strong> — {visibleMessages.length} matching message(s)
+            </span>
+            {onSearchChange && (
+              <Button variant="ghost" size="sm" onClick={() => onSearchChange('')}>
+                <X size={13} /> Clear
+              </Button>
+            )}
+          </div>
+        )}
+
         <div className="chat-messages">
-          {hasMore && messages.length >= 20 && (
+          {hasMore && messages.length >= 20 && !searchQuery.trim() && (
             <div style={{ textAlign: 'center' }}>
               <Button variant="ghost" size="sm" loading={loadingOlder} onClick={() => void handleLoadOlder()}>
                 Load earlier messages
@@ -339,40 +446,68 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
             </div>
           )}
 
-          <div className="thread-hero">
-            <Avatar name={activeRoom?.name || topic} size="lg" />
-            <h2 className="thread-hero__title">#{activeRoom?.name || topic}</h2>
-            <div className="thread-hero__sub">
-              Channel by @{activeRoom?.created_by || 'system'} • Real-Time WebSocket &amp; Local-First Sync
-            </div>
-          </div>
+          {!searchQuery.trim() && (
+            <>
+              <div className="thread-hero">
+                <Avatar name={activeRoom?.name || topic} size="lg" />
+                <h2 className="thread-hero__title">#{activeRoom?.name || topic}</h2>
+                <div className="thread-hero__sub">
+                  Channel by @{activeRoom?.created_by || 'system'} • Real-Time WebSocket &amp; Local-First Sync
+                </div>
+              </div>
 
-          <div className="day-divider">
-            <span className="day-divider__pill">Today</span>
-          </div>
+              <div className="day-divider">
+                <span className="day-divider__pill">Today</span>
+              </div>
+            </>
+          )}
 
           {!rooms.length && messages.length === 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <Skeleton height="52px" />
               <Skeleton height="52px" />
             </div>
-          ) : messages.length === 0 ? (
+          ) : visibleMessages.length === 0 ? (
             <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 24, fontSize: 13 }}>
-              This is the very beginning of #{topic}. Send a message below!
+              {searchQuery.trim()
+                ? `No messages matching "${searchQuery.trim()}" in #${topic}.`
+                : `This is the very beginning of #${topic}. Send a message below!`}
             </div>
           ) : (
-            messages.map((m) => {
+            visibleMessages.map((m) => {
               const isOwn = m.sender_id === user?.id;
               const senderPresence = presenceMap[m.sender_id]?.status;
               const mediaUrl = m.attachment ? `${APP_CONFIG.apiBaseUrl}${m.attachment.url}` : undefined;
               const isImage = m.attachment?.mime_type?.startsWith('image/');
+              const senderUsername = usersById[m.sender_id]?.username || m.sender_id;
 
               return (
-                <div key={m.message_id} className={`msg-row ${isOwn ? 'msg-row--own' : ''}`}>
+                <div
+                  key={m.message_id}
+                  id={`msg-${m.message_id}`}
+                  className={`msg-row ${isOwn ? 'msg-row--own' : ''}`}
+                >
                   <Avatar name={m.sender_name || m.sender_id} size="sm" status={senderPresence} />
                   <div className="msg-col">
-                    <div className="msg-sender">{m.sender_name || m.sender_id}</div>
+                    <div className="msg-sender">
+                      {m.sender_name || m.sender_id}{' '}
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                        @{senderUsername}
+                      </span>
+                    </div>
                     <div className="msg-bubble">
+                      {m.reply_to && (
+                        <div
+                          className="msg-reply-quote"
+                          onClick={() => scrollToMessage(m.reply_to!.message_id)}
+                          title="Jump to original message"
+                        >
+                          <div className="msg-reply-quote__sender">
+                            Replying to {m.reply_to.sender_name || m.reply_to.sender_id}
+                          </div>
+                          <div className="msg-reply-quote__text">{m.reply_to.text}</div>
+                        </div>
+                      )}
                       {m.text && <div className="msg-text">{m.text}</div>}
                       {m.attachment && (
                         <div className="msg-attachment">
@@ -414,6 +549,7 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
                               setEmojiMenuFor((prev) => (prev === m.message_id ? null : m.message_id))
                             }
                             aria-label="Add reaction"
+                            title="React"
                           >
                             <Smile size={12} />
                           </button>
@@ -450,6 +586,30 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
                             </div>
                           )}
                         </div>
+
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          style={{ padding: 2 }}
+                          onClick={() => handleStartReply(m)}
+                          aria-label="Reply to message"
+                          title="Reply"
+                        >
+                          <Reply size={12} />
+                        </button>
+
+                        {isOwn && (
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            style={{ padding: 2, color: 'var(--danger)' }}
+                            onClick={() => void handleDeleteMessage(m)}
+                            aria-label="Delete message"
+                            title="Delete message"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </div>
 
                       {isOwn && (
@@ -474,6 +634,27 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
         </div>
 
         <form className="composer-wrap" onSubmit={(e) => void handleSend(e)}>
+          {replyingTo && (
+            <div className="reply-banner">
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 11 }}>
+                  Replying to {replyingTo.sender_name || replyingTo.sender_id}
+                </div>
+                <div style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {replyingTo.text}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Cancel reply"
+                onClick={() => setReplyingTo(null)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {pendingAttachment && (
             <div className="msg-attachment" style={{ marginBottom: 8, justifyContent: 'space-between' }}>
               <span>
@@ -491,6 +672,25 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
           )}
 
           <div className="composer-pill" style={{ position: 'relative' }}>
+            {mentionMatch && (
+              <div className="mention-popover" role="listbox" aria-label="Mention suggestions">
+                {mentionMatch.candidates.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className="mention-option"
+                    onClick={() => handleSelectMention(u.username)}
+                  >
+                    <Avatar name={u.display_name} size="sm" status={presenceMap[u.id]?.status} />
+                    <div>
+                      <div style={{ fontWeight: 700 }}>@{u.username}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{u.display_name}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
             <input
               ref={fileInputRef}
               type="file"
@@ -509,6 +709,7 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
             </button>
 
             <input
+              ref={composerInputRef}
               className="composer__input"
               value={text}
               onChange={(e) => handleTypingChange(e.target.value)}
@@ -520,7 +721,10 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
               className="icon-btn"
               title="Mention teammate"
               aria-label="Mention teammate"
-              onClick={() => setText((prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}@`)}
+              onClick={() => {
+                setText((prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}@`);
+                composerInputRef.current?.focus();
+              }}
             >
               <AtSign size={16} />
             </button>
@@ -633,7 +837,13 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
               const status: PresenceStatus = rec?.status ?? 'OFFLINE';
               const custom = rec?.custom_status ?? u.custom_status;
               return (
-                <div key={u.id} className="user-row">
+                <div
+                  key={u.id}
+                  className="user-row"
+                  style={{ cursor: onSearchChange ? 'pointer' : undefined }}
+                  onClick={() => onSearchChange?.(`@${u.username}`)}
+                  title={`Filter chats by @${u.username}`}
+                >
                   <Avatar name={u.display_name} src={u.avatar_url} size="sm" status={status} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div
@@ -656,7 +866,7 @@ export const ChatPage: React.FC<{ topic: string; searchQuery?: string }> = ({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {custom || status.toLowerCase()}
+                      @{u.username} • {custom || status.toLowerCase()}
                     </div>
                   </div>
                   <StatusDot status={status} size="sm" />

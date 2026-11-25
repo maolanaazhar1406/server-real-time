@@ -126,5 +126,46 @@ describe('app/server REST API & Sync', () => {
     expect(syncRes.status).toBe(200);
     const syncBody = await syncRes.text();
     expect(syncBody).toContain('Sync test @alice');
+
+    // Reply & Delete Message flow
+    const replyRec = appSrv.store.recordMessage({
+      topic: 'general',
+      senderId: 'charlie',
+      messageId: 'm-reply-1',
+      text: 'Reply to m-1',
+      replyTo: {
+        message_id: 'm-1',
+        sender_id: 'charlie',
+        sender_name: 'charlie',
+        text: 'Sync test @alice',
+      },
+    });
+    expect(replyRec.created).toBe(true);
+
+    // Other user (alice) cannot delete charlie's message -> 403
+    const aliceLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: 'alice@example.com', password: 'password123' }),
+    });
+    const aliceData = (await aliceLogin.json()) as { access_token: string };
+    const forbiddenDel = await fetch(`${baseUrl}/api/messages/m-reply-1`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${aliceData.access_token}` },
+    });
+    expect(forbiddenDel.status).toBe(403);
+
+    // Owner (charlie) deletes message -> 200 and recorded in delta sync
+    const okDel = await fetch(`${baseUrl}/api/messages/m-reply-1`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${regData.access_token}` },
+    });
+    expect(okDel.status).toBe(200);
+
+    const syncAfterDel = await fetch(`${baseUrl}/api/sync?last_event_id=0`, {
+      headers: { Authorization: `Bearer ${regData.access_token}` },
+    });
+    const delSyncText = await syncAfterDel.text();
+    expect(delSyncText).toContain('delete_message');
   });
 });

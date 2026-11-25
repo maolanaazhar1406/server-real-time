@@ -281,7 +281,7 @@ export class AppStore {
     this.presence.set(rec.user_id, rec);
   }
 
-  recordMessage({ topic = 'general', senderId, targetId = '', messageId = '', clientMsgId = '', kind = 'chat', text = '', attachment = null, timestamp = Date.now() }) {
+  recordMessage({ topic = 'general', senderId, targetId = '', messageId = '', clientMsgId = '', kind = 'chat', text = '', attachment = null, replyTo = null, timestamp = Date.now() }) {
     if (messageId && this.msgById.has(messageId)) {
       return { message: this.msgById.get(messageId), created: false, notifications: [] };
     }
@@ -316,6 +316,7 @@ export class AppStore {
       kind: attachment ? 'file' : kind || 'chat',
       text,
       attachment: attachment || undefined,
+      reply_to: replyTo || undefined,
       reactions: {},
       read_by: { [senderId]: timestamp },
       timestamp,
@@ -413,6 +414,31 @@ export class AppStore {
       reactions: msg.reactions,
     }, Date.now());
     return { message: msg, event: ev };
+  }
+
+  deleteMessage(messageId, requesterId) {
+    let msg = this.msgById.get(messageId) || this.msgByClientId.get(messageId);
+    if (!msg) return { status: 'not_found' };
+    if (msg.sender_id !== requesterId) return { status: 'forbidden' };
+
+    const list = this.roomMessages.get(msg.topic) || [];
+    this.roomMessages.set(
+      msg.topic,
+      list.filter((m) => m.message_id !== msg.message_id),
+    );
+    this.msgById.delete(msg.message_id);
+    if (msg.client_msg_id) {
+      this.msgByClientId.delete(msg.client_msg_id);
+    }
+
+    const ev = this.appendEvent(
+      'delete_message',
+      msg.topic,
+      requesterId,
+      { message_id: msg.message_id, client_msg_id: msg.client_msg_id, topic: msg.topic },
+      Date.now(),
+    );
+    return { status: 'deleted', message: msg, event: ev };
   }
 
   addNotification(userId, title, body, kind, topic, messageId) {

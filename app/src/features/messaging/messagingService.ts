@@ -2,7 +2,7 @@ import { httpClient } from '@/core/network/http/httpClient';
 import { socketManager } from '@/core/network/realtime/socketManager';
 import { localStore } from '@/core/storage/localStore';
 import { syncEngine } from '@/core/sync/syncEngine';
-import { Attachment, Room } from '@/core/types';
+import { Attachment, ReplyReference, Room } from '@/core/types';
 import { generateUUIDv7 } from '@/shared/utils/uuidv7';
 
 export const messagingService = {
@@ -32,7 +32,12 @@ export const messagingService = {
     });
   },
 
-  async sendMessage(topic: string, text: string, attachment?: Attachment): Promise<void> {
+  async sendMessage(
+    topic: string,
+    text: string,
+    attachment?: Attachment,
+    replyTo?: ReplyReference,
+  ): Promise<void> {
     const user = localStore.getState().session?.user;
     if (!user) return;
     const trimmed = text.trim();
@@ -45,6 +50,7 @@ export const messagingService = {
       kind: attachment ? ('file' as const) : ('chat' as const),
       text: trimmed,
       attachment,
+      reply_to: replyTo,
       created_at: Date.now(),
       attempts: 0,
       status: 'pending' as const,
@@ -55,6 +61,28 @@ export const messagingService = {
 
     if (socketManager.isConnected() && localStore.getState().browserOnline) {
       await syncEngine.flushOutbox();
+    }
+  },
+
+  async deleteMessage(topic: string, messageId: string, clientMsgId?: string): Promise<void> {
+    localStore.deleteMessage(messageId, topic);
+    if (clientMsgId && clientMsgId !== messageId) {
+      localStore.deleteMessage(clientMsgId, topic);
+    }
+    try {
+      await httpClient.request(`/api/messages/${encodeURIComponent(messageId)}`, {
+        method: 'DELETE',
+      });
+    } catch {
+      if (clientMsgId && clientMsgId !== messageId) {
+        try {
+          await httpClient.request(`/api/messages/${encodeURIComponent(clientMsgId)}`, {
+            method: 'DELETE',
+          });
+        } catch {
+          // Local/outbox-only deletion or offline
+        }
+      }
     }
   },
 

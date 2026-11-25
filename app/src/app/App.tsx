@@ -40,7 +40,13 @@ const AppRoutes: React.FC = () => {
   let content: React.ReactNode = <DashboardPage />;
   if (path.startsWith('/chat/')) {
     const topic = decodeURIComponent(path.slice('/chat/'.length)) || 'general';
-    content = <ChatPage topic={topic} searchQuery={searchQuery} />;
+    content = (
+      <ChatPage
+        topic={topic}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
+    );
   } else if (path === '/notifications') {
     content = <NotificationCenter />;
   } else if (path === '/settings') {

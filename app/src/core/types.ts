@@ -83,6 +83,13 @@ export interface Attachment {
   size: number;
 }
 
+export interface ReplyReference {
+  message_id: string;
+  sender_id: string;
+  sender_name?: string;
+  text: string;
+}
+
 export interface ChatMessage {
   event_id?: number;
   message_id: string;
@@ -94,6 +101,7 @@ export interface ChatMessage {
   kind: 'chat' | 'file' | 'system';
   text: string;
   attachment?: Attachment;
+  reply_to?: ReplyReference;
   reactions?: Record<string, string[]>;
   read_by?: Record<string, number>;
   timestamp: number;
@@ -107,6 +115,7 @@ export interface OutboxItem {
   kind: 'chat' | 'file';
   text: string;
   attachment?: Attachment;
+  reply_to?: ReplyReference;
   created_at: number;
   attempts: number;
   status: 'pending' | 'sending' | 'failed';
@@ -165,7 +174,7 @@ export interface ServerStats {
 
 export interface SyncEvent {
   event_id: number;
-  kind: 'message' | 'read_receipt' | 'notification' | 'reaction' | 'preferences';
+  kind: 'message' | 'read_receipt' | 'notification' | 'reaction' | 'preferences' | 'delete_message';
   topic?: string;
   user_id?: string;
   data: unknown;

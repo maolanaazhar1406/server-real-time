@@ -260,6 +260,11 @@ export class WSBridge {
       return;
     }
 
+    if (p.kind === 'delete_message' && p.message_id) {
+      this.store.deleteMessage(p.message_id, senderId);
+      return;
+    }
+
     const res = this.store.recordMessage({
       topic: env.topic || 'general',
       senderId,
@@ -269,6 +274,7 @@ export class WSBridge {
       kind: p.kind || 'chat',
       text: p.text || '',
       attachment: p.attachment || null,
+      replyTo: p.reply_to || null,
       timestamp: env.timestamp || Date.now(),
     });
 
