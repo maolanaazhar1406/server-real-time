@@ -1,0 +1,70 @@
+node:
+  id: "node-1"
+  shutdown_timeout: 15s
+  drain_timeout: 5s
+  max_connections: 100000
+
+websocket:
+  enabled: true
+  addr: ":8080"
+  path: "/ws"
+  read_limit: 65536
+  ping_interval: 20s
+  pong_wait: 60s
+  write_timeout: 10s
+  enable_compression: true
+  outbound_queue_size: 256
+
+tcp:
+  enabled: true
+  addr: ":9000"
+  max_frame_size: 1048576
+  read_timeout: 60s
+  write_timeout: 10s
+  worker_pool_size: 16
+  worker_queue_size: 4096
+  buffer_size: 4096
+  outbound_queue_size: 256
+
+udp:
+  enabled: true
+  addr: ":9001"
+  max_packet_size: 2048
+  session_ttl: 60s
+  cleanup_interval: 10s
+  worker_pool_size: 16
+  worker_queue_size: 4096
+
+http:
+  addr: ":8081"
+
+core:
+  shard_count: 64
+  heartbeat_timeout: 60s
+  reaper_interval: 10s
+  broadcaster_workers: 16
+  broadcaster_queue: 8192
+  slow_consumer_policy: "drop"
+  client_send_queue_size: 256
+
+delivery:
+  ack_timeout: 5s
+  retry_interval: 500ms
+  base_retry_delay: 500ms
+  max_retry_delay: 15s
+  max_retries: 4
+  dlq_capacity: 10000
+
+distributed:
+  backend: "memory" # change to "redis" in multi-node cluster deployments
+  redis_addr: "localhost:6379"
+  redis_password: ""
+  redis_db: 0
+  channel_prefix: "rtserver"
+  presence_ttl: 45s
+  cluster_ttl: 15s
+  virtual_nodes: 128
+
+log:
+  level: "info"
+  format: "json"

@@ -1,0 +1,85 @@
+static_resources:
+  listeners:
+    - name: ws_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 8080
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: ws_ingress
+                upgrade_configs:
+                  - upgrade_type: websocket
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: rtserver
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: rtserver_ws
+                            timeout: 0s
+                            hash_policy:
+                              - connection_properties:
+                                  source_ip: true
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+    - name: tcp_listener
+      address:
+        socket_address:
+          address: 0.0.0.0
+          port_value: 9000
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.tcp_proxy
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.tcp_proxy.v3.TcpProxy
+                stat_prefix: tcp_ingress
+                cluster: rtserver_tcp
+
+  clusters:
+    - name: rtserver_ws
+      connect_timeout: 2s
+      type: STRICT_DNS
+      lb_policy: RING_HASH
+      load_assignment:
+        cluster_name: rtserver_ws
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: node-1
+                      port_value: 8080
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: node-2
+                      port_value: 8080
+
+    - name: rtserver_tcp
+      connect_timeout: 2s
+      type: STRICT_DNS
+      lb_policy: LEAST_REQUEST
+      load_assignment:
+        cluster_name: rtserver_tcp
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: node-1
+                      port_value: 9000
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: node-2
+                      port_value: 9000
