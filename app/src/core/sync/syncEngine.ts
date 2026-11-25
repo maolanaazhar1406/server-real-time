@@ -1,5 +1,6 @@
 import { httpClient } from '@/core/network/http/httpClient';
 import { socketManager } from '@/core/network/realtime/socketManager';
+import { sseClient } from '@/core/network/realtime/sseClient';
 import { localStore } from '@/core/storage/localStore';
 import {
   ChatMessage,
@@ -18,6 +19,7 @@ class SyncEngine {
   private initialized = false;
   private flushingOutbox = false;
   private syncingDelta = false;
+  private deltaSyncInterval: ReturnType<typeof setInterval> | null = null;
 
   init(): void {
     if (this.initialized) return;
@@ -44,6 +46,23 @@ class SyncEngine {
     }
   }
 
+  /** Start periodic delta sync polling (every 10s) as a fallback for missed WS events. */
+  startPeriodicSync(): void {
+    this.stopPeriodicSync();
+    this.deltaSyncInterval = setInterval(() => {
+      if (localStore.getAccessToken()) {
+        void this.runDeltaSync();
+      }
+    }, 10_000);
+  }
+
+  stopPeriodicSync(): void {
+    if (this.deltaSyncInterval) {
+      clearInterval(this.deltaSyncInterval);
+      this.deltaSyncInterval = null;
+    }
+  }
+
   private async onSocketConnected(): Promise<void> {
     await this.flushOutbox();
     await this.runDeltaSync();
@@ -63,6 +82,13 @@ class SyncEngine {
 
   async bootstrapWorkspace(): Promise<void> {
     if (!localStore.getAccessToken()) return;
+
+    // Connect SSE fallback channel for real-time events (delete, new messages)
+    sseClient.connect();
+
+    // Start periodic delta sync to catch missed events (every 10s)
+    this.startPeriodicSync();
+
     try {
       const [roomsRes, usersRes, notifRes, statsRes] = await Promise.all([
         httpClient.request<{ rooms: Room[] }>('/api/rooms'),

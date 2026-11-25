@@ -1,5 +1,6 @@
 import { httpClient } from '@/core/network/http/httpClient';
 import { socketManager } from '@/core/network/realtime/socketManager';
+import { sseClient } from '@/core/network/realtime/sseClient';
 import { localStore } from '@/core/storage/localStore';
 import { syncEngine } from '@/core/sync/syncEngine';
 import { AuthSession, DeviceSession, User } from '@/core/types';
@@ -80,6 +81,8 @@ export const authService = {
       // Proceed with local logout even if network unavailable
     } finally {
       socketManager.disconnect();
+      sseClient.disconnect();
+      syncEngine.stopPeriodicSync();
       await localStore.clearSession();
     }
   },

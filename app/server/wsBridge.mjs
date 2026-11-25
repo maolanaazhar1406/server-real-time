@@ -14,6 +14,8 @@ export class WSBridge {
     this.buffer = Buffer.alloc(0);
     this.joinedTopics = new Set();
     this.reconnectTimer = null;
+    /** @type {((msg: object) => void) | null} */
+    this.onRecordedMessage = null;
   }
 
   start() {
@@ -278,9 +280,14 @@ export class WSBridge {
       timestamp: env.timestamp || Date.now(),
     });
 
-    if (res.created && res.notifications.length > 0) {
-      for (const n of res.notifications) {
-        this.pushControlToUser(n.user_id, 'NOTIFICATION', n);
+    if (res.created) {
+      if (this.onRecordedMessage) {
+        this.onRecordedMessage(res.message);
+      }
+      if (res.notifications.length > 0) {
+        for (const n of res.notifications) {
+          this.pushControlToUser(n.user_id, 'NOTIFICATION', n);
+        }
       }
     }
   }

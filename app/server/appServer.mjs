@@ -79,8 +79,42 @@ export function createAppServer({
   const bridge = enableBridge ? new WSBridge(wsUrl, store) : null;
   const startedAt = Date.now();
 
+  // --- SSE Event Bus: push real-time events to all connected browsers ---------
+  /** @type {Map<string, { res: import('http').ServerResponse, userId: string }>} */
+  const sseClients = new Map();
+  let sseIdCounter = 0;
+
+  /** Send an SSE event to every connected browser. */
+  function sseBroadcast(eventName, data) {
+    const payload = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const [, client] of sseClients) {
+      try {
+        client.res.write(payload);
+      } catch {
+        // dead connection, will be cleaned up on close
+      }
+    }
+  }
+
+  /** Send an SSE event to a specific user (all their tabs/devices). */
+  function ssePushToUser(userId, eventName, data) {
+    const payload = `event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const [, client] of sseClients) {
+      if (client.userId !== userId) continue;
+      try {
+        client.res.write(payload);
+      } catch {
+        // dead connection
+      }
+    }
+  }
+
   if (bridge) {
     bridge.start();
+    // When the bridge receives a new message from Go WS, also push via SSE
+    bridge.onRecordedMessage = (msg) => {
+      sseBroadcast('new_message', msg);
+    };
   }
 
   function authenticate(req, res) {
@@ -123,6 +157,34 @@ export function createAppServer({
     try {
       if (pathname === '/api/health') {
         sendJson(res, 200, { ok: true, bridge_connected: bridge?.connected ?? false });
+        return;
+      }
+
+      // SSE Event Stream — real-time fallback when Go WS server is unavailable
+      if (pathname === '/api/events' && req.method === 'GET') {
+        const tokenParam = reqUrl.searchParams.get('token');
+        if (!tokenParam) {
+          sendError(res, 401, 'missing token query parameter');
+          return;
+        }
+        let claims;
+        try {
+          claims = jwt.verify(tokenParam);
+          if (claims.token_type !== 'access') throw new Error('bad type');
+        } catch {
+          sendError(res, 401, 'invalid or expired token');
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.write(':ok\n\n');
+        const clientId = String(++sseIdCounter);
+        sseClients.set(clientId, { res, userId: claims.sub });
+        req.on('close', () => sseClients.delete(clientId));
         return;
       }
 
@@ -329,6 +391,8 @@ export function createAppServer({
           };
           bridge?.broadcastTopicEvent(result.message.topic, claims.sub, delPayload);
           bridge?.pushControlToUser(claims.sub, 'DELETE_MESSAGE', delPayload);
+          // SSE fallback: push delete event to ALL connected browsers
+          sseBroadcast('delete_message', delPayload);
           return sendJson(res, 200, { ok: true, ...delPayload });
         }
 
@@ -418,8 +482,13 @@ export function createAppServer({
     store,
     jwt,
     bridge,
+    sseClients,
     close() {
       bridge?.stop();
+      for (const [, client] of sseClients) {
+        try { client.res.end(); } catch { /* ignore */ }
+      }
+      sseClients.clear();
       return new Promise((resolve) => server.close(() => resolve()));
     },
   };

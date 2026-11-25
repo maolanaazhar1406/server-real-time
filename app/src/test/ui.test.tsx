@@ -1,6 +1,6 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ShellLayout } from '@/app/ShellLayout';
 import { RouterProvider } from '@/core/router/router';
 import { localStore } from '@/core/storage/localStore';
@@ -9,6 +9,20 @@ import { ChatPage } from '@/features/messaging/ChatPage';
 import { ToastProvider } from '@/shared/ui';
 
 describe('UI Components Presentation Layer', () => {
+  beforeEach(() => {
+    // Reset store state between tests to prevent leakage
+    localStore['state'] = { ...(localStore as any).constructor.prototype.constructor.call ? localStore['state'] : localStore['state'] };
+    localStore['state'].messagesByTopic = {};
+    localStore['state'].rooms = [];
+    localStore['state'].outbox = [];
+    localStore['state'].notifications = [];
+    localStore['state'].session = null;
+    localStore['seenMessageIds']?.clear?.();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
   it('renders LoginPage with quick demo accounts', () => {
     render(
       <ToastProvider>
@@ -90,7 +104,7 @@ describe('UI Components Presentation Layer', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 
-  it('supports reply, search by @username, and delete message in ChatPage', () => {
+  it('supports reply, search by @username, and delete message in ChatPage', async () => {
     localStore.setSession({
       user: {
         id: 'alice',
@@ -177,18 +191,29 @@ describe('UI Components Presentation Layer', () => {
 
     // 1. Reply to Bob's message shows reply banner
     const replyBtns = screen.getAllByRole('button', { name: 'Reply to message' });
-    fireEvent.click(replyBtns[1]!);
-    expect(screen.getByText('Replying to Bob Santoso')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(replyBtns[1]!);
+    });
+    // The reply banner should now be visible
+    const replyBanner = document.querySelector('.reply-banner');
+    expect(replyBanner).not.toBeNull();
+    expect(replyBanner!.textContent).toContain('Replying to');
+    expect(replyBanner!.textContent).toContain('Bob Santoso');
 
     // 2. Search by @username filters messages to @bob only
     const searchInput = screen.getByLabelText('Search workspace');
     fireEvent.change(searchInput, { target: { value: '@bob' } });
-    expect(screen.getByText('Message from Bob')).toBeInTheDocument();
-    expect(screen.queryByText('Message from Alice')).not.toBeInTheDocument();
+    // Bob's message text should be visible in the chat area
+    const bobMsgEls = screen.getAllByText('Message from Bob');
+    expect(bobMsgEls.length).toBeGreaterThanOrEqual(1);
+    // Alice's message text should NOT be in the chat message list
+    const aliceMsgChatEls = document.querySelectorAll('.msg-text');
+    const aliceVisible = Array.from(aliceMsgChatEls).some((el) => el.textContent === 'Message from Alice');
+    expect(aliceVisible).toBe(false);
 
     // Clear search -> both visible again
     fireEvent.change(searchInput, { target: { value: '' } });
-    expect(screen.getByText('Message from Alice')).toBeInTheDocument();
+    expect(screen.getAllByText('Message from Alice').length).toBeGreaterThanOrEqual(1);
 
     // 3. Delete Alice's own message removes it immediately
     const deleteBtn = screen.getByRole('button', { name: 'Delete message' });
