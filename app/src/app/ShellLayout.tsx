@@ -1,157 +1,206 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Bell,
-  Hash,
   LayoutDashboard,
   LogOut,
+  MessageCircle,
   Moon,
-  Plus,
+  Search,
   Settings,
   Sun,
-  Wifi,
-  WifiOff,
   Zap,
 } from 'lucide-react';
 import { useRouter } from '@/core/router/router';
+import { syncEngine } from '@/core/sync/syncEngine';
 import { authService } from '@/features/auth/authService';
-import { NewRoomModal } from '@/features/messaging/NewRoomModal';
 import { NotificationBell } from '@/features/notifications/NotificationCenter';
-import { StatusSelector } from '@/features/presence/PresencePanel';
 import { settingsService } from '@/features/settings/settingsService';
-import { useNetworkStatus, useStoreSelector } from '@/shared/hooks';
-import { Avatar, Badge, Button } from '@/shared/ui';
+import { useNetworkStatus, usePresence, useStoreSelector } from '@/shared/hooks';
+import { Avatar, Badge, useToast } from '@/shared/ui';
 
-export const ShellLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+interface ShellLayoutProps {
+  children: React.ReactNode;
+  searchQuery?: string;
+  onSearchChange?: (q: string) => void;
+}
+
+function getSectionTitle(path: string): string {
+  if (path.startsWith('/chat/')) return 'Conversations';
+  if (path === '/notifications') return 'Notifications';
+  if (path === '/settings') return 'Settings';
+  return 'Dashboard';
+}
+
+export const ShellLayout: React.FC<ShellLayoutProps> = ({
+  children,
+  searchQuery = '',
+  onSearchChange,
+}) => {
   const { path, navigate } = useRouter();
+  const { pushToast } = useToast();
   const { isConnected, socketState, browserOnline } = useNetworkStatus();
   const user = useStoreSelector((s) => s.session?.user);
-  const rooms = useStoreSelector((s) => s.rooms);
+  const activeTopic = useStoreSelector((s) => s.activeTopic || 'general');
   const theme = useStoreSelector((s) => s.theme);
   const outboxCount = useStoreSelector((s) => s.outbox.length);
   const unreadNotifs = useStoreSelector((s) => s.notifications.filter((n) => !n.read).length);
-  const [newRoomOpen, setNewRoomOpen] = useState(false);
+  const { status: myPresence } = usePresence(user?.id);
+
+  const handleQuickSync = async () => {
+    await syncEngine.flushOutbox();
+    await syncEngine.runDeltaSync();
+    pushToast({
+      title: isConnected ? 'Real-Time Engine Synced' : 'Delta Sync Attempted',
+      description: isConnected ? 'WebSocket connected & state up to date.' : `Status: ${socketState}`,
+      variant: isConnected ? 'success' : 'info',
+    });
+  };
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar__brand">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div className="auth-brand__logo" style={{ width: 30, height: 30, borderRadius: 8 }}>
-              <Zap size={16} />
-            </div>
-            <strong>PulseRT</strong>
-          </div>
+      {/* Column 1: Deep Teal Icon Rail */}
+      <aside className="icon-rail" aria-label="Main navigation">
+        <div
+          className="icon-rail__brand"
+          title="PulseRT"
+          onClick={() => navigate(`/chat/${activeTopic}`)}
+        >
+          <Zap size={22} />
+        </div>
+
+        <nav className="icon-rail__nav">
           <button
             type="button"
-            className="icon-btn"
+            className={`rail-btn ${path.startsWith('/chat/') ? 'rail-btn--active' : ''}`}
+            onClick={() => navigate(`/chat/${activeTopic}`)}
+            title="Conversations"
+            aria-label="Conversations"
+          >
+            <MessageCircle size={19} />
+          </button>
+
+          <button
+            type="button"
+            className={`rail-btn ${path === '/dashboard' ? 'rail-btn--active' : ''}`}
+            onClick={() => navigate('/dashboard')}
+            title="Dashboard"
+            aria-label="Dashboard"
+          >
+            <LayoutDashboard size={19} />
+          </button>
+
+          <button
+            type="button"
+            className={`rail-btn ${path === '/notifications' ? 'rail-btn--active' : ''}`}
+            onClick={() => navigate('/notifications')}
+            title="Notifications"
+            aria-label="Notifications"
+          >
+            <Bell size={19} />
+            {unreadNotifs > 0 && <span className="rail-btn__badge">{unreadNotifs}</span>}
+          </button>
+
+          <button
+            type="button"
+            className={`rail-btn ${path === '/settings' ? 'rail-btn--active' : ''}`}
+            onClick={() => navigate('/settings')}
+            title="Settings"
+            aria-label="Settings"
+          >
+            <Settings size={19} />
+          </button>
+        </nav>
+
+        <div className="icon-rail__footer">
+          <button
+            type="button"
+            className="rail-btn"
             aria-label="Toggle theme"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             onClick={() => void settingsService.toggleTheme(theme === 'dark' ? 'light' : 'dark')}
           >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-        </div>
-
-        <nav className="sidebar__nav" aria-label="Primary navigation">
-          <button
-            type="button"
-            className={`nav-item ${path === '/dashboard' ? 'nav-item--active' : ''}`}
-            onClick={() => navigate('/dashboard')}
-          >
-            <span className="nav-item__left">
-              <LayoutDashboard size={16} /> Dashboard
-            </span>
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           <button
             type="button"
-            className={`nav-item ${path === '/notifications' ? 'nav-item--active' : ''}`}
-            onClick={() => navigate('/notifications')}
+            className="rail-btn"
+            aria-label="Sign Out"
+            title="Sign Out"
+            onClick={() => void authService.logout()}
           >
-            <span className="nav-item__left">
-              <Bell size={16} /> Notifications
-            </span>
-            {unreadNotifs > 0 && <Badge variant="danger">{unreadNotifs}</Badge>}
+            <LogOut size={18} />
           </button>
-          <button
-            type="button"
-            className={`nav-item ${path === '/settings' ? 'nav-item--active' : ''}`}
-            onClick={() => navigate('/settings')}
-          >
-            <span className="nav-item__left">
-              <Settings size={16} /> Settings
-            </span>
-          </button>
-        </nav>
-
-        <div className="sidebar__section-title">
-          <span>Channels</span>
-          <button
-            type="button"
-            className="icon-btn"
-            style={{ padding: 2 }}
-            onClick={() => setNewRoomOpen(true)}
-            aria-label="Create channel"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-
-        <nav className="sidebar__nav" aria-label="Channels">
-          {rooms.map((r) => {
-            const target = `/chat/${r.topic}`;
-            return (
-              <button
-                key={r.topic}
-                type="button"
-                className={`nav-item ${path === target ? 'nav-item--active' : ''}`}
-                onClick={() => navigate(target)}
-              >
-                <span className="nav-item__left">
-                  <Hash size={15} /> {r.name}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="sidebar__footer">
-          {user && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 6px' }}>
-              <Avatar name={user.display_name} src={user.avatar_url} size="sm" />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user.display_name}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{user.username}</div>
-              </div>
-            </div>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => void authService.logout()}>
-            <LogOut size={14} /> Sign Out
-          </Button>
         </div>
       </aside>
 
+      {/* Main Content Area */}
       <div className="main-area">
         <header className="topbar">
           <div className="topbar__left">
+            <h1 className="topbar__title">{getSectionTitle(path)}</h1>
             <Badge variant={isConnected ? 'success' : 'warning'}>
-              {isConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
               {browserOnline ? socketState : 'OFFLINE'}
             </Badge>
             {outboxCount > 0 && <Badge variant="warning">{outboxCount} queued</Badge>}
           </div>
+
+          <div className="topbar__search">
+            <input
+              type="search"
+              className="topbar__search-input"
+              value={searchQuery}
+              onChange={(e) => onSearchChange?.(e.target.value)}
+              placeholder="Search channels, messages, or people..."
+              aria-label="Search workspace"
+            />
+            <Search size={15} className="topbar__search-icon" />
+          </div>
+
           <div className="topbar__right">
-            <StatusSelector />
+            <button
+              type="button"
+              className={`bolt-pill ${isConnected ? 'bolt-pill--online' : ''}`}
+              title="Real-Time & Delta Sync"
+              aria-label="Trigger sync"
+              onClick={() => void handleQuickSync()}
+            >
+              <Zap size={16} />
+            </button>
+
             <NotificationBell />
+
+            {user && (
+              <div
+                className="user-chip"
+                onClick={() => navigate('/settings')}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') navigate('/settings');
+                }}
+              >
+                <div className="user-chip__meta">
+                  <div className="user-chip__name">{user.display_name}</div>
+                  <div className="user-chip__role">@{user.username}</div>
+                </div>
+                <Avatar
+                  name={user.display_name}
+                  src={user.avatar_url}
+                  size="sm"
+                  status={myPresence}
+                />
+              </div>
+            )}
           </div>
         </header>
 
-        <main className={path.startsWith('/chat/') ? 'main-area' : 'content-scroll'} style={path.startsWith('/chat/') ? { flex: 1, height: 'auto' } : undefined}>
+        <main
+          className={path.startsWith('/chat/') ? 'main-area' : 'content-scroll'}
+          style={path.startsWith('/chat/') ? { flex: 1, height: 'auto' } : undefined}
+        >
           {children}
         </main>
       </div>
-
-      <NewRoomModal open={newRoomOpen} onClose={() => setNewRoomOpen(false)} />
     </div>
   );
 };

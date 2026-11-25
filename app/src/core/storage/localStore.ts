@@ -38,7 +38,7 @@ export interface LocalStoreState {
 const DEFAULT_STATE: LocalStoreState = {
   hydrated: false,
   session: null,
-  theme: 'dark',
+  theme: 'light',
   socketState: 'DISCONNECTED',
   browserOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   activeTopic: 'general',
@@ -129,7 +129,7 @@ export class LocalStore {
     notifications.sort((a, b) => b.created_at - a.created_at);
     outbox.sort((a, b) => a.created_at - b.created_at);
 
-    const theme = session?.user.theme ?? savedTheme ?? 'dark';
+    const theme = session?.user.theme ?? savedTheme ?? 'light';
     this.applyThemeAttribute(theme);
 
     this.emit({

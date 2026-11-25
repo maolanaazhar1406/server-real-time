@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RouterProvider, RouteGuard, isPublicRoute, useRouter } from '@/core/router/router';
 import { syncEngine } from '@/core/sync/syncEngine';
 import { authService } from '@/features/auth/authService';
@@ -18,6 +18,7 @@ const AppRoutes: React.FC = () => {
   const { path } = useRouter();
   const hydrated = useStoreSelector((s) => s.hydrated);
   const session = useStoreSelector((s) => s.session);
+  const [searchQuery, setSearchQuery] = useState('');
 
   if (!hydrated) {
     return (
@@ -39,14 +40,18 @@ const AppRoutes: React.FC = () => {
   let content: React.ReactNode = <DashboardPage />;
   if (path.startsWith('/chat/')) {
     const topic = decodeURIComponent(path.slice('/chat/'.length)) || 'general';
-    content = <ChatPage topic={topic} />;
+    content = <ChatPage topic={topic} searchQuery={searchQuery} />;
   } else if (path === '/notifications') {
     content = <NotificationCenter />;
   } else if (path === '/settings') {
     content = <SettingsPage />;
   }
 
-  return <ShellLayout>{content}</ShellLayout>;
+  return (
+    <ShellLayout searchQuery={searchQuery} onSearchChange={setSearchQuery}>
+      {content}
+    </ShellLayout>
+  );
 };
 
 export const App: React.FC = () => {

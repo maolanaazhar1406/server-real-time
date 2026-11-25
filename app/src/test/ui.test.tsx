@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { ShellLayout } from '@/app/ShellLayout';
 import { RouterProvider } from '@/core/router/router';
 import { localStore } from '@/core/storage/localStore';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -21,14 +22,14 @@ describe('UI Components Presentation Layer', () => {
     expect(screen.getByRole('button', { name: 'Sign in as Alice' })).toBeInTheDocument();
   });
 
-  it('renders ChatPage reading reactively from LocalStore', () => {
+  it('renders 4-column ChatPage & ShellLayout reading reactively from LocalStore', () => {
     localStore.setSession({
       user: {
         id: 'alice',
         email: 'alice@example.com',
         username: 'alice',
         display_name: 'Alice Chen',
-        theme: 'dark',
+        theme: 'light',
         created_at: 1000,
       },
       device: {
@@ -67,11 +68,18 @@ describe('UI Components Presentation Layer', () => {
 
     render(
       <ToastProvider>
-        <ChatPage topic="general" />
+        <RouterProvider>
+          <ShellLayout>
+            <ChatPage topic="general" />
+          </ShellLayout>
+        </RouterProvider>
       </ToastProvider>,
     );
 
-    expect(screen.getByText('#General Lobby')).toBeInTheDocument();
+    expect(screen.getAllByText('#General Lobby').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Hello from LocalStore')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /New Channel/i })).toBeInTheDocument();
+    expect(screen.getByLabelText('Search workspace')).toBeInTheDocument();
+    expect(screen.getByText('Team Presence')).toBeInTheDocument();
   });
 });

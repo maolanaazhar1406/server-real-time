@@ -25,9 +25,9 @@ export const NotificationBell: React.FC = () => {
         <span
           style={{
             position: 'absolute',
-            top: -2,
-            right: -2,
-            background: 'var(--danger)',
+            top: 0,
+            right: 0,
+            background: 'var(--accent)',
             color: '#fff',
             borderRadius: 999,
             fontSize: 10,

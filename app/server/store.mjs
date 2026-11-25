@@ -34,7 +34,7 @@ export class AppStore {
         username: 'alice',
         display_name: 'Alice Chen',
         bio: 'Systems Engineer • Real-Time Architecture',
-        theme: 'dark',
+        theme: 'light',
         custom_status: 'Building low-latency systems',
         password_hash: hashPassword('password123'),
         created_at: now - 3600_000,
